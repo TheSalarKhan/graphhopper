@@ -17,9 +17,9 @@
  */
 package com.graphhopper.resources;
 
-import com.graphhopper.GHRequest;
-import com.graphhopper.GHResponse;
-import com.graphhopper.GraphHopper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.graphhopper.*;
 import com.graphhopper.gpx.GpxConversions;
 import com.graphhopper.http.GHPointParam;
 import com.graphhopper.jackson.MultiException;
@@ -37,6 +37,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.validation.constraints.NotNull;
 import javax.ws.rs.*;
 import javax.ws.rs.core.*;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -206,6 +207,70 @@ public class RouteResource {
                     type(MediaType.APPLICATION_JSON).
                     build();
         }
+    }
+
+    @POST
+    @Path("multi")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response doPostMulti(
+            @NotNull GHRequestDistanceMatrix request,
+            @Context HttpServletRequest httpReq,
+            @Context UriInfo uriInfo,
+            @QueryParam("type") @DefaultValue("json") String type,
+            @QueryParam(INSTRUCTIONS) @DefaultValue("true") boolean instructions,
+            @QueryParam(CALC_POINTS) @DefaultValue("true") boolean calcPoints,
+            @QueryParam("points_encoded") @DefaultValue("true") boolean pointsEncoded
+    ) {
+        List<ObjectNode> responses = new ArrayList<>();
+        if(request.getRequests() != null) {
+            int index = 0;
+            for(GHDistanceMatrixRequestElement ele: request.getRequests()) {
+                List<GHPoint> points = ele.getGHPoints();
+                if(points == null) {
+                    continue;
+                }
+                GHRequest ghRequest = new GHRequest();
+                initHints(ghRequest.getHints(), uriInfo.getQueryParameters());
+                String profileName = profileResolver.resolveProfile(ghRequest.getHints()).getName();
+                errorIfLegacyParameters(ghRequest.getHints());
+                ghRequest.setPoints(points).
+                        setProfile(profileName).
+                        setAlgorithm("").
+                        setLocale("en").
+                        getHints().
+                        putObject(CALC_POINTS, calcPoints).
+                        putObject(INSTRUCTIONS, instructions).
+                        putObject(WAY_POINT_MAX_DISTANCE, "1");
+                GHResponse ghResponse = graphHopper.route(ghRequest);
+
+                if (ghResponse.hasErrors()) {
+                    logger.error(" errors:" + ghResponse.getErrors());
+                    throw new MultiException(ghResponse.getErrors());
+                }
+
+                ObjectNode response = ResponsePathSerializer.jsonObject(
+                        ghResponse,
+                        instructions,
+                        calcPoints,
+                        false,
+                        pointsEncoded,
+                        0
+                );
+
+                ObjectNode responseNode = JsonNodeFactory.instance.objectNode();
+                responseNode.put("request_element", index);
+                responseNode.set("distance", response.get("paths").get(0).get("distance"));
+                responseNode.set("points", response.get("paths").get(0).get("points"));
+
+                responses.add(responseNode);
+                index++;
+            }
+        }
+
+        return Response.ok(responses).
+                type(MediaType.APPLICATION_JSON).
+                build();
     }
 
     private void enableEdgeBasedIfThereAreCurbsides(List<String> curbsides, GHRequest request) {
