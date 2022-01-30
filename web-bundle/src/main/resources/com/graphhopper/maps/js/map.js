@@ -83,6 +83,19 @@ function initMap(bounds, setStartCoord, setIntermediateCoord, setEndCoord, selec
         loadingControl: false
     });
 
+    window.MAPObj = map;
+    window.printLine = function() {
+      window.MAPObj.eachLayer(function (layer) {
+          if (layer instanceof L.GeoJSON) {
+              var geojson = layer.toGeoJSON();
+              const candidates = geojson.features.filter(fl1 => fl1.geometry.type === 'LineString');
+              if(!candidates.length) return;
+              const stringToPrint = JSON.stringify(candidates[0]);
+              if(!stringToPrint.includes("[-180,-90]")) { console.log(stringToPrint); }
+          }
+      });
+    }
+
     var _startItem = {
         text: translate.tr('set_start'),
         icon: './img/marker-small-green.png',
