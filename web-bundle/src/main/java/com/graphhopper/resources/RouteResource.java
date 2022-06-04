@@ -25,6 +25,7 @@ import com.graphhopper.http.GHPointParam;
 import com.graphhopper.jackson.MultiException;
 import com.graphhopper.jackson.ResponsePathSerializer;
 import com.graphhopper.routing.ProfileResolver;
+import com.graphhopper.routing.Router;
 import com.graphhopper.util.*;
 import com.graphhopper.util.shapes.GHPoint;
 import io.dropwizard.jersey.params.AbstractParam;
@@ -214,7 +215,7 @@ public class RouteResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response doPostMulti(
-            @NotNull GHRequestDistanceMatrix request,
+            @NotNull GHRequestMultiRoute request,
             @Context HttpServletRequest httpReq,
             @Context UriInfo uriInfo,
             @QueryParam("type") @DefaultValue("json") String type,
@@ -225,7 +226,7 @@ public class RouteResource {
         List<ObjectNode> responses = new ArrayList<>();
         if(request.getRequests() != null) {
             int index = 0;
-            for(GHDistanceMatrixRequestElement ele: request.getRequests()) {
+            for(GHMultiRouteRequestElement ele: request.getRequests()) {
                 List<GHPoint> points = ele.getGHPoints();
                 if(points == null) {
                     continue;
@@ -271,6 +272,92 @@ public class RouteResource {
         return Response.ok(responses).
                 type(MediaType.APPLICATION_JSON).
                 build();
+    }
+
+    @POST
+    @Path("matrix")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getMatrix(
+            @NotNull GHRequestDistanceMatrix request,
+            @Context HttpServletRequest httpReq,
+            @Context UriInfo uriInfo,
+            @QueryParam("type") @DefaultValue("json") String type,
+            @QueryParam(INSTRUCTIONS) @DefaultValue("true") boolean instructions,
+            @QueryParam(CALC_POINTS) @DefaultValue("true") boolean calcPoints,
+            @QueryParam("points_encoded") @DefaultValue("true") boolean pointsEncoded
+    ) {
+        if(request.getOrigins().size() == 0 || request.getDestinations().size() == 0) {
+            return Response.ok().
+                    type(MediaType.APPLICATION_JSON).
+                    build();
+        }
+
+        double[][] distanceMatrix = new double[request.getOrigins().size()][request.getDestinations().size()];
+        long[][] etaMatrix = new long[request.getOrigins().size()][request.getDestinations().size()];
+
+
+        // First create a ghrequest object.
+        GHRequest ghRequest = getGhRequestObj(uriInfo);
+
+        // Create origin and destination point list.
+        List<GHPoint> origins = getGhPointsFromLatLonStringsList(request.getOrigins());
+        List<GHPoint> destinations = getGhPointsFromLatLonStringsList(request.getDestinations());
+
+        // A temp array of length 2 for setPoints param
+        List<GHPoint> fromToList = new ArrayList<>(2);
+        fromToList.add(null);
+        fromToList.add(null);
+
+        // Create router
+        Router router = graphHopper.createRouter();
+
+        // Nested Loop to populate the distance matrix.
+        for(int i=0;i<origins.size();i++) {
+            for (int j = 0; j < origins.size(); j++) {
+                GHPoint from = origins.get(i);
+                GHPoint to = destinations.get(j);
+                fromToList.set(0, from);
+                fromToList.set(1, to);
+                ghRequest.setPoints(fromToList);
+                GHResponse ghResponse = router.route(ghRequest);
+                distanceMatrix[i][j] = ghResponse.getBest().getDistance();
+                // getTime() responds with time in milliseconds therefore we must /1000
+                // to get time in seconds.
+                etaMatrix[i][j] = ghResponse.getBest().getTime() / 1000;
+            }
+        }
+
+        ObjectNode jsonResponseObj = JsonNodeFactory.instance.objectNode();
+        jsonResponseObj.putPOJO("distance_matrix", distanceMatrix);
+        jsonResponseObj.putPOJO("eta_matrix", etaMatrix);
+
+        return Response.ok(jsonResponseObj).
+                type(MediaType.APPLICATION_JSON).
+                build();
+    }
+
+    private List<GHPoint> getGhPointsFromLatLonStringsList(List<String> list) {
+        List<GHPoint> toReturn = new ArrayList<>();
+        for(String s: list) {
+            toReturn.add(GHPoint.fromString(s));
+        }
+        return toReturn;
+    }
+
+    private GHRequest getGhRequestObj(UriInfo uriInfo) {
+        GHRequest ghRequest = new GHRequest();
+        initHints(ghRequest.getHints(), uriInfo.getQueryParameters());
+        String profileName = profileResolver.resolveProfile(ghRequest.getHints()).getName();
+        errorIfLegacyParameters(ghRequest.getHints());
+        ghRequest.setProfile(profileName).
+                setAlgorithm("").
+                setLocale("en").
+                getHints().
+                putObject(CALC_POINTS, false).
+                putObject(INSTRUCTIONS, false).
+                putObject(WAY_POINT_MAX_DISTANCE, "1");
+        return ghRequest;
     }
 
     private void enableEdgeBasedIfThereAreCurbsides(List<String> curbsides, GHRequest request) {

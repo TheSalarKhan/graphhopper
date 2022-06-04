@@ -5,7 +5,7 @@ import com.graphhopper.util.shapes.GHPoint;
 import java.util.ArrayList;
 import java.util.List;
 
-public class GHDistanceMatrixRequestElement {
+public class GHMultiRouteRequestElement {
     private List<String> points;
 
     public List<GHPoint> getGHPoints(){

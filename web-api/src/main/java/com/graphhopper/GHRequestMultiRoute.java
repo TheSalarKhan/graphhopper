@@ -20,27 +20,20 @@ package com.graphhopper;
 import java.util.List;
 
 
-
 /**
  * Request object to perform routing with GraphHopper.
  *
  * @author Peter Karich
  * @author ratrun
  */
-public class GHRequestDistanceMatrix {
-    private List<String> origins;
-    private List<String> destinations;
+public class GHRequestMultiRoute {
+    private List<GHMultiRouteRequestElement> requests;
 
-
-    public List<String> getOrigins() {
-        return origins;
+    public List<GHMultiRouteRequestElement> getRequests() {
+        return requests;
     }
 
-    public void setOrigins(List<String> origins) {
-        this.origins = origins;
-    }
-
-    public List<String> getDestinations() {
-        return destinations;
+    public void setRequests(List<GHMultiRouteRequestElement> requests) {
+        this.requests = requests;
     }
 }
