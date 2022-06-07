@@ -20,22 +20,19 @@ package com.graphhopper.resources;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.graphhopper.*;
+import com.graphhopper.routing.EdgeRestrictions;
+import com.graphhopper.routing.PathCalculator;
 import com.graphhopper.routing.ProfileResolver;
 import com.graphhopper.routing.Router;
+import com.graphhopper.storage.index.Snap;
 import com.graphhopper.util.*;
 import com.graphhopper.util.shapes.GHPoint;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import javax.inject.Inject;
-import javax.inject.Named;
-import javax.servlet.http.HttpServletRequest;
 import javax.validation.constraints.NotNull;
 import javax.ws.rs.*;
 import javax.ws.rs.core.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 import static com.graphhopper.util.Parameters.Routing.*;
 
@@ -49,38 +46,36 @@ import static com.graphhopper.util.Parameters.Routing.*;
 @Path("distance-matrix")
 public class DistanceMatrixResource {
 
-    private final GraphHopper graphHopper;
     private final ProfileResolver profileResolver;
-    private final Boolean hasElevation;
     private final Router router;
 
     @Inject
-    public DistanceMatrixResource(GraphHopper graphHopper, ProfileResolver profileResolver, @Named("hasElevation") Boolean hasElevation) {
-        this.graphHopper = graphHopper;
+    public DistanceMatrixResource(GraphHopper graphHopper, ProfileResolver profileResolver) {
         this.profileResolver = profileResolver;
-        this.hasElevation = hasElevation;
-
         this.router = graphHopper.createRouter();
     }
 
-    private GHResponse getResponse(GHRequest request) {
-        return router.route(request);
+    public double getDistanceFor(List<com.graphhopper.routing.Path> paths) {
+        double toReturn = 0;
+        for(com.graphhopper.routing.Path p: paths) {
+            toReturn += p.getDistance();
+        }
+        return toReturn;
     }
 
+    public long getTimeFor(List<com.graphhopper.routing.Path> paths) {
+        long toReturn = 0;
+        for(com.graphhopper.routing.Path p: paths) {
+            toReturn += p.getTime();
+        }
+        return toReturn;
+    }
 
     @POST
     @Path("request")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response getMatrix(
-            @NotNull GHRequestDistanceMatrix request,
-            @Context HttpServletRequest httpReq,
-            @Context UriInfo uriInfo,
-            @QueryParam("type") @DefaultValue("json") String type,
-            @QueryParam(INSTRUCTIONS) @DefaultValue("true") boolean instructions,
-            @QueryParam(CALC_POINTS) @DefaultValue("true") boolean calcPoints,
-            @QueryParam("points_encoded") @DefaultValue("true") boolean pointsEncoded
-    ) {
+    public Response getMatrix(@NotNull GHRequestDistanceMatrix request) {
         if(request.getOrigins().size() == 0 || request.getDestinations().size() == 0) {
             return Response.ok().
                     type(MediaType.APPLICATION_JSON).
@@ -91,31 +86,27 @@ public class DistanceMatrixResource {
         long[][] etaMatrix = new long[request.getOrigins().size()][request.getDestinations().size()];
 
 
-        // First create a ghrequest object.
-        GHRequest ghRequest = getGhRequestObj(uriInfo);
+        // Create solver.
+        Router.Solver solver = router.createAndInitSolver(getGhRequestObj());
 
         // Create origin and destination point list.
-        List<GHPoint> origins = getGhPointsFromLatLonStringsList(request.getOrigins());
-        List<GHPoint> destinations = getGhPointsFromLatLonStringsList(request.getDestinations());
+        List<Snap> origins = getSnapsListFromLatLngString(request.getOrigins(), router, solver);
+        List<Snap> destinations = getSnapsListFromLatLngString(request.getDestinations(), router, solver);
 
-        // A temp array of length 2 for setPoints param
-        List<GHPoint> fromToList = new ArrayList<>(2);
-        fromToList.add(null);
-        fromToList.add(null);
+
+        EdgeRestrictions ers = new EdgeRestrictions();
 
         // Nested Loop to populate the distance matrix.
         for(int i=0;i<origins.size();i++) {
-            for (int j = 0; j < origins.size(); j++) {
-                GHPoint from = origins.get(i);
-                GHPoint to = destinations.get(j);
-                fromToList.set(0, from);
-                fromToList.set(1, to);
-                ghRequest.setPoints(fromToList);
-                GHResponse ghResponse = getResponse(ghRequest);
-                distanceMatrix[i][j] = ghResponse.getBest().getDistance();
-                // getTime() responds with time in milliseconds therefore we must /1000
-                // to get time in seconds.
-                etaMatrix[i][j] = ghResponse.getBest().getTime() / 1000;
+            for (int j = 0; j < destinations.size(); j++) {
+                Snap fromSnap = origins.get(i);
+                Snap toSnap = destinations.get(j);
+
+                PathCalculator pathCalculator =  router.createPathCalculatorForSnaps(Arrays.asList(fromSnap,toSnap), solver);
+                List<com.graphhopper.routing.Path> paths = pathCalculator.calcPaths(fromSnap.getClosestNode(), toSnap.getClosestNode(), ers);
+
+                distanceMatrix[i][j] = getDistanceFor(paths);
+                etaMatrix[i][j] = getTimeFor(paths) / 1000;
             }
         }
 
@@ -128,19 +119,19 @@ public class DistanceMatrixResource {
                 build();
     }
 
-    private List<GHPoint> getGhPointsFromLatLonStringsList(List<String> list) {
-        List<GHPoint> toReturn = new ArrayList<>();
-        for(String s: list) {
-            toReturn.add(GHPoint.fromString(s));
+    private List<Snap> getSnapsListFromLatLngString(List<String> latLngStrings, Router router, Router.Solver solver) {
+        List<Snap> toReturn = new ArrayList<>();
+        for(String s: latLngStrings) {
+            toReturn.add(
+                    router.getSnap(GHPoint.fromString(s), solver)
+            );
         }
         return toReturn;
     }
 
-    private GHRequest getGhRequestObj(UriInfo uriInfo) {
+    private GHRequest getGhRequestObj() {
         GHRequest ghRequest = new GHRequest();
-        initHints(ghRequest.getHints(), uriInfo.getQueryParameters());
         String profileName = profileResolver.resolveProfile(ghRequest.getHints()).getName();
-        errorIfLegacyParameters(ghRequest.getHints());
         ghRequest.setProfile(profileName).
                 setAlgorithm("").
                 setLocale("en").

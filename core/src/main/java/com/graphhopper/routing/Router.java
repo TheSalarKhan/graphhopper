@@ -24,8 +24,7 @@ import com.graphhopper.GHResponse;
 import com.graphhopper.ResponsePath;
 import com.graphhopper.config.Profile;
 import com.graphhopper.routing.ch.CHRoutingAlgorithmFactory;
-import com.graphhopper.routing.ev.EncodedValueLookup;
-import com.graphhopper.routing.ev.Subnetwork;
+import com.graphhopper.routing.ev.*;
 import com.graphhopper.routing.lm.LMRoutingAlgorithmFactory;
 import com.graphhopper.routing.lm.LandmarkStorage;
 import com.graphhopper.routing.querygraph.QueryGraph;
@@ -241,6 +240,22 @@ public class Router {
         ghRsp.getHints().putObject("visited_nodes.sum", result.visitedNodes);
         ghRsp.getHints().putObject("visited_nodes.average", (float) result.visitedNodes / (snaps.size() - 1));
         return ghRsp;
+    }
+
+    public Solver createAndInitSolver(GHRequest request) {
+        Solver solver = createSolver(request);
+        solver.init();
+        return solver;
+    }
+
+    public Snap getSnap(GHPoint point, Solver solver) {
+        return locationIndex.findClosest(point.lat, point.lon, solver.getSnapFilter());
+    }
+
+    public PathCalculator createPathCalculatorForSnaps(List<Snap> snaps, Solver solver) {
+        QueryGraph queryGraph = QueryGraph.create(ghStorage, snaps);
+        PathCalculator pathCalculator = solver.createPathCalculator(queryGraph);
+        return pathCalculator;
     }
 
     protected GHResponse routeVia(GHRequest request, Solver solver) {
