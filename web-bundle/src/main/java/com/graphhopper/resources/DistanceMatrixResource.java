@@ -141,42 +141,4 @@ public class DistanceMatrixResource {
                 putObject(WAY_POINT_MAX_DISTANCE, "1");
         return ghRequest;
     }
-
-    public static void errorIfLegacyParameters(PMap hints) {
-        if (hints.has("weighting"))
-            throw new IllegalArgumentException("Since you are using the 'profile' parameter, do not use the 'weighting' parameter." +
-                    " You used 'weighting=" + hints.getString("weighting", "") + "'");
-        if (hints.has("vehicle"))
-            throw new IllegalArgumentException("Since you are using the 'profile' parameter, do not use the 'vehicle' parameter." +
-                    " You used 'vehicle=" + hints.getString("vehicle", "") + "'");
-        if (hints.has("edge_based"))
-            throw new IllegalArgumentException("Since you are using the 'profile' parameter, do not use the 'edge_based' parameter." +
-                    " You used 'edge_based=" + hints.getBool("edge_based", false) + "'");
-        if (hints.has("turn_costs"))
-            throw new IllegalArgumentException("Since you are using the 'profile' parameter, do not use the 'turn_costs' parameter." +
-                    " You used 'turn_costs=" + hints.getBool("turn_costs", false) + "'");
-    }
-
-    public static void removeLegacyParameters(PMap hints) {
-        // these parameters should only be used to resolve the profile, but should not be passed to GraphHopper
-        hints.remove("weighting");
-        hints.remove("vehicle");
-        hints.remove("edge_based");
-        hints.remove("turn_costs");
-    }
-
-    static void initHints(PMap m, MultivaluedMap<String, String> parameterMap) {
-        for (Map.Entry<String, List<String>> e : parameterMap.entrySet()) {
-            if (e.getValue().size() == 1) {
-                m.putObject(Helper.camelCaseToUnderScore(e.getKey()), Helper.toObject(e.getValue().get(0)));
-            } else {
-                // TODO e.g. 'point' parameter occurs multiple times and we cannot throw an exception here
-                //  unknown parameters (hints) should be allowed to be multiparameters, too, or we shouldn't use them for
-                //  known parameters either, _or_ known parameters must be filtered before they come to this code point,
-                //  _or_ we stop passing unknown parameters altogether.
-                // throw new WebApplicationException(String.format("This query parameter (hint) is not allowed to occur multiple times: %s", e.getKey()));
-                // see also #1976
-            }
-        }
-    }
 }
