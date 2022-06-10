@@ -211,7 +211,7 @@ public class MVTResource {
                     EdgeIteratorState edge =
                             graphHopper.getGraphHopperStorage()
                                     .getEdgeIteratorStateForKey(
-                                            GHUtility.createEdgeKey(edgeId, false)
+                                            GHUtility.createEdgeKey(edgeId, false, false)
                                     );
 
                     int fromNodeId = edge.getBaseNode();
