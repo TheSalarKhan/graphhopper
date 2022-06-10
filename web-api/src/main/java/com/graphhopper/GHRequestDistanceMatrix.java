@@ -43,4 +43,8 @@ public class GHRequestDistanceMatrix {
     public List<String> getDestinations() {
         return destinations;
     }
+
+    public void setDestinations(List<String> destinations) {
+        this.destinations = destinations;
+    }
 }
