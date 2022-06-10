@@ -258,7 +258,7 @@ public class Router {
     }
 
     public PathCalculator createPathCalculatorForSnaps(List<Snap> snaps, Solver solver) {
-        QueryGraph queryGraph = QueryGraph.create(ghStorage, snaps);
+        QueryGraph queryGraph = QueryGraph.create(graph, snaps);
         PathCalculator pathCalculator = solver.createPathCalculator(queryGraph);
         return pathCalculator;
     }
